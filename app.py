@@ -1,8 +1,6 @@
 from flask import Flask, request, render_template, send_from_directory
-import json
 import os
-
-# from functions import ...
+import functions
 
 POST_PATH = "posts.json"
 UPLOAD_FOLDER = "uploads/images"
@@ -13,37 +11,21 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 @app.route("/")
 def page_index():
-    # В функцию
-    with open("posts.json", encoding="utf-8") as f:
-        raw_json = json.load(f)
+    json_data = functions.read_json("posts.json")
 
-    match = []
-    for post in raw_json:
-        text = post["content"].split(" ")
-        for word in text:
-            if "#" in word:
-                tag = word.replace("#", "")
-                tag = tag.replace("!", "")
-                match.append(tag)
-    match = set(match)
-    #
+    tags = functions.tags(json_data)
 
-    return render_template("index.html", tags=match)
+    return render_template("index.html", tags=tags)
 
 
 @app.route("/tag")
 def page_tag():
+    json_data = functions.read_json("posts.json")
+
     tag = request.args["tag"]
-    tag = "#" + tag
+    taged_posts = functions.tag_search(json_data, tag)
 
-    with open("posts.json", encoding="utf-8") as f:
-        raw_json = json.load(f)
-    tag_post = []
-    for post in raw_json:
-        if tag in post["content"]:
-            tag_post.append(post)
-
-    return render_template("post_by_tag.html", posts=tag_post)
+    return render_template("post_by_tag.html", posts=taged_posts, tag=tag)
 
 
 @app.route("/post", methods=["GET", "POST"])
@@ -51,23 +33,29 @@ def page_post_create():
     if request.method == "GET":
         return render_template("post_form.html")
     if request.method == "POST":
+        json_data = functions.read_json("posts.json")
 
+        # Работа с файлом и проверка его наличия
         file = request.files['picture']
         if file.filename == '':
-            return 'No selected file'
-
+            return 'Ошибка загрузки'
+        # Сохранение файла в папку /uploads/images
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], file.filename))
 
-        with open("posts.json", encoding="utf-8") as f:
-            raw_json = json.load(f)
-        post = {
-            "pic": "/uploads/images/...",  # Как указать тут динамический путь?
-            "content": request.form.get("content")
-        }
-        raw_json.append(post)
+        # Работа с текстом и проверка его наличия
+        new_content = request.form.get("content")
+        if new_content == "":
+            return "Ошибка загрузки"
 
-        with open("posts.json", "w") as f:
-            json.dump(raw_json, f)
+        # Формирование данных о загруженном посте
+        post = {
+            "pic": os.path.join(app.config['UPLOAD_FOLDER'], file.filename),
+            "content": new_content
+        }
+        json_data.append(post)
+
+        # Запись в файл posts.json нового поста
+        functions.write_json("posts.json", json_data)
 
         return render_template("post_uploaded.html", new_post=post)
 
